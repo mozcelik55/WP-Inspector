@@ -3,7 +3,7 @@
  * Plugin Name: WP Inspector
  * Plugin URI:  https://github.com/your-repo/wp-inspector
  * Description: A powerful inspection & audit management system for WordPress, similar to iAuditor.
- * Version:     1.4.45
+ * Version:     1.4.45.102
  * Author:      Your Name
  * License:     GPL-2.0+
  * Text Domain: wp-inspector
