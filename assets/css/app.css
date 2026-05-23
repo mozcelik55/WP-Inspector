@@ -1,0 +1,176 @@
+/* ── WP Inspector – Global styles ── */
+
+#wp-inspector-root {
+  /* Fill the full admin content area on desktop */
+  margin: -20px -20px 0 -160px;
+  min-height: 85vh;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+#wp-inspector-root * {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#wp-inspector-root input:focus,
+#wp-inspector-root select:focus,
+#wp-inspector-root textarea:focus {
+  outline: none;
+  border-color: #1a73e8 !important;
+  box-shadow: 0 0 0 3px rgba(26,115,232,.18);
+}
+
+#wp-inspector-root button { font-family: inherit; }
+#wp-inspector-root button:active { opacity: 0.8; }
+
+#wp-inspector-root input[type=range] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: #e0e0e0;
+  border: none !important;
+  box-shadow: none !important;
+}
+#wp-inspector-root input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: #1a73e8;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,.2);
+}
+#wp-inspector-root canvas { touch-action: none; display: block; }
+
+/* ── Mobile full-screen layout ── */
+@media (max-width: 767px) {
+
+  /* Fill entire screen edge-to-edge */
+  #wp-inspector-root {
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: 100vh;
+    min-height: 100dvh; /* dynamic viewport height – accounts for browser chrome */
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Hide ALL WordPress admin UI on mobile */
+  #wpadminbar,
+  #adminmenuwrap,
+  #adminmenuback,
+  #wpfooter,
+  .update-nag,
+  .notice,
+  .wp-pointer {
+    display: none !important;
+  }
+
+  html {
+    margin-top: 0 !important;
+    overflow-x: hidden !important;
+  }
+
+  body {
+    overflow-x: hidden !important;
+    overscroll-behavior-x: none;
+    padding-bottom: 0 !important;
+  }
+
+  #wpcontent {
+    margin-left: 0 !important;
+    padding-left: 0 !important;
+    float: none !important;
+  }
+
+  #wpbody-content {
+    padding-bottom: 0 !important;
+  }
+
+  .wrap { margin: 0 !important; padding: 0 !important; }
+}
+
+/* ── Safe area / notch support (iOS) ── */
+
+/* Bottom tab bar — sits above browser nav */
+.wpi-bottom-tabs {
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+}
+
+/* Action bar — sits above bottom tab bar */
+.wpi-action-bar {
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  /* On pages with bottom tabs, add extra space */
+  bottom: 0;
+}
+
+/* When inside inspection view, action bar sits above tab bar (60px) */
+.wpi-has-tabs .wpi-action-bar {
+  bottom: calc(60px + max(0px, env(safe-area-inset-bottom)));
+}
+
+
+/* Modern shell refresh */
+#wpcontent, #wpbody-content { background: #f5f7fb; }
+#wp-inspector-root {
+  margin: -20px -20px 0 -20px;
+  padding: 20px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top right, rgba(79,70,229,0.10), transparent 25%),
+    linear-gradient(180deg, #f8fbff 0%, #f5f7fb 100%);
+}
+#wp-inspector-root button {
+  border-radius: 12px;
+  transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
+}
+#wp-inspector-root button:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(15,23,42,.12); }
+#wp-inspector-root img { max-width: 100%; }
+#wp-inspector-root table {
+  width: 100% !important;
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+  background: #fff;
+  color: #0f172a !important;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(15,23,42,.06);
+}
+#wp-inspector-root table th,
+#wp-inspector-root table td {
+  color: #0f172a !important;
+  background: #fff !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+#wp-inspector-root table th {
+  background: #f8fafc !important;
+  font-weight: 700;
+}
+#wp-inspector-root [style*="color:#fff"][style*="background:#fff"] { color: #0f172a !important; }
+@media (max-width: 767px) {
+  #wp-inspector-root {
+    position: relative;
+    inset: auto;
+    padding: 0;
+    min-height: 100dvh;
+    background: linear-gradient(180deg, #f8fbff 0%, #f5f7fb 100%);
+  }
+  #wp-inspector-root table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+  }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes a4mPulse{0%,100%{opacity:.5}50%{opacity:1}}
+@keyframes a4mShimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+.wpi-skeleton{background:linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%);background-size:200% 100%;animation:a4mShimmer 1.4s ease-in-out infinite;border-radius:4px;}
