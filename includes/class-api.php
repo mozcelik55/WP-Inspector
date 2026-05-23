@@ -133,6 +133,10 @@ class WPI_API {
             "SELECT * FROM {$wpdb->prefix}wpi_templates WHERE id = %d", $id
         ) );
         if ( ! $row ) return new WP_Error( 'not_found', 'Template not found', array( 'status' => 404 ) );
+        $api_org = $this->get_api_org_id();
+        if ( $api_org && (int) $row->org_id !== $api_org ) {
+            return new WP_Error( 'rest_forbidden', 'Access denied.', array( 'status' => 403 ) );
+        }
         return rest_ensure_response( $row );
     }
 
@@ -152,7 +156,15 @@ class WPI_API {
 
     public function update_template( $request ) {
         global $wpdb;
-        $id     = absint( $request['id'] );
+        $id      = absint( $request['id'] );
+        $existing = $wpdb->get_row( $wpdb->prepare(
+            "SELECT org_id FROM {$wpdb->prefix}wpi_templates WHERE id = %d", $id
+        ) );
+        if ( ! $existing ) return new WP_Error( 'not_found', 'Template not found', array( 'status' => 404 ) );
+        $api_org = $this->get_api_org_id();
+        if ( $api_org && (int) $existing->org_id !== $api_org ) {
+            return new WP_Error( 'rest_forbidden', 'Access denied.', array( 'status' => 403 ) );
+        }
         $fields = array();
         if ( $request->get_param( 'title' ) )       $fields['title']       = sanitize_text_field( $request->get_param( 'title' ) );
         if ( $request->get_param( 'description' ) !== null ) $fields['description'] = sanitize_textarea_field( $request->get_param( 'description' ) );
@@ -164,7 +176,15 @@ class WPI_API {
 
     public function delete_template( $request ) {
         global $wpdb;
-        $id = absint( $request['id'] );
+        $id      = absint( $request['id'] );
+        $existing = $wpdb->get_row( $wpdb->prepare(
+            "SELECT org_id FROM {$wpdb->prefix}wpi_templates WHERE id = %d", $id
+        ) );
+        if ( ! $existing ) return new WP_Error( 'not_found', 'Template not found', array( 'status' => 404 ) );
+        $api_org = $this->get_api_org_id();
+        if ( $api_org && (int) $existing->org_id !== $api_org ) {
+            return new WP_Error( 'rest_forbidden', 'Access denied.', array( 'status' => 403 ) );
+        }
         $wpdb->update( $wpdb->prefix . 'wpi_templates', array( 'status' => 'archived' ), array( 'id' => $id ) );
         return rest_ensure_response( array( 'success' => true ) );
     }
@@ -257,6 +277,15 @@ class WPI_API {
              WHERE i.id = %d", $id
         ) );
         if ( ! $row ) return new WP_Error( 'not_found', 'Inspection not found', array( 'status' => 404 ) );
+        $api_org = $this->get_api_org_id();
+        $uid     = get_current_user_id();
+        if ( $api_org ) {
+            if ( (int) $row->org_id !== $api_org ) {
+                return new WP_Error( 'rest_forbidden', 'Access denied.', array( 'status' => 403 ) );
+            }
+        } elseif ( ! current_user_can( 'manage_options' ) && (int) $row->conducted_by !== $uid ) {
+            return new WP_Error( 'rest_forbidden', 'Access denied.', array( 'status' => 403 ) );
+        }
 
         // Attach responses
         $responses = $wpdb->get_results( $wpdb->prepare(
@@ -292,7 +321,20 @@ class WPI_API {
 
     public function update_inspection( $request ) {
         global $wpdb;
-        $id        = absint( $request['id'] );
+        $id  = absint( $request['id'] );
+        $ins = $wpdb->get_row( $wpdb->prepare(
+            "SELECT org_id, conducted_by FROM {$wpdb->prefix}wpi_inspections WHERE id = %d", $id
+        ) );
+        if ( ! $ins ) return new WP_Error( 'not_found', 'Inspection not found', array( 'status' => 404 ) );
+        $api_org = $this->get_api_org_id();
+        $uid     = get_current_user_id();
+        if ( $api_org ) {
+            if ( (int) $ins->org_id !== $api_org ) {
+                return new WP_Error( 'rest_forbidden', 'Access denied.', array( 'status' => 403 ) );
+            }
+        } elseif ( ! current_user_can( 'manage_options' ) && (int) $ins->conducted_by !== $uid ) {
+            return new WP_Error( 'rest_forbidden', 'Access denied.', array( 'status' => 403 ) );
+        }
         $responses = $request->get_param( 'responses' );
         $status    = sanitize_text_field( $request->get_param( 'status' ) ?: 'in_progress' );
         $notes     = sanitize_textarea_field( $request->get_param( 'notes' ) ?: '' );

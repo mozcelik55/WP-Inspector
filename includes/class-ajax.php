@@ -5228,14 +5228,7 @@ Valid types: yes_no, text, textarea, number, multiple_choice, checkbox, date_tim
         $user = wp_signon( $creds, is_ssl() );
 
         if ( is_wp_error( $user ) ) {
-            $err_map = array(
-                'invalid_username'   => 'Username not found. Please check and try again.',
-                'invalid_email'      => 'Email address not found. Please check and try again.',
-                'incorrect_password' => 'Incorrect password. Please try again.',
-            );
-            $code = $user->get_error_code();
-            $msg  = $err_map[ $code ] ?? 'Sign in failed. Please check your credentials.';
-            wp_send_json_error( array( 'message' => $msg, 'code' => $code ), 401 );
+            wp_send_json_error( array( 'message' => 'Incorrect username or password.' ), 401 );
             return;
         }
 
@@ -7351,14 +7344,19 @@ If you received this, your schedule email settings are working correctly.", $cfg
         }
         $at_limit = ( $user_max > 0 && $user_active >= $user_max ) || ( $org_max > 0 && $org_active >= $org_max );
 
+        if ( ! $at_limit ) {
+            wp_send_json_success( array( 'at_limit' => false ) );
+            return;
+        }
+
         wp_send_json_success( array(
-            'at_limit' => $at_limit,
-            'active'   => $user_active,
-            'max'      => $user_max,
+            'at_limit'   => true,
+            'active'     => $user_active,
+            'max'        => $user_max,
             'org_active' => $org_active,
             'org_max'    => $org_max,
-            'devices'  => $devices,
-            'user_id'  => $uid,
+            'devices'    => $devices,
+            'user_id'    => $uid,
             'can_remove' => $this->wpi_is_desktop_device_request( $body['device_info'] ?? '' ),
         ) );
     }
@@ -7369,6 +7367,11 @@ If you received this, your schedule email settings are working correctly.", $cfg
      * and we re-verify the user_id matches before deleting.
      */
     public function wpi_remove_device_for_login() {
+        $nonce = sanitize_text_field( $_POST['nonce'] ?? '' );
+        if ( ! $nonce || ! wp_verify_nonce( $nonce, 'wpi_login' ) ) {
+            wp_send_json_error( array( 'message' => 'Invalid request.' ), 403 );
+            return;
+        }
         $this->ensure_device_history_columns();
         $body       = $this->input();
         if ( ! $this->wpi_is_desktop_device_request( $body['device_info'] ?? '' ) ) {

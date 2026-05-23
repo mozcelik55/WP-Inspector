@@ -3,7 +3,7 @@
  * Plugin Name: WP Inspector
  * Plugin URI:  https://github.com/your-repo/wp-inspector
  * Description: A powerful inspection & audit management system for WordPress, similar to iAuditor.
- * Version:     1.4.45.104
+ * Version:     1.4.45.105
  * Author:      Your Name
  * License:     GPL-2.0+
  * Text Domain: wp-inspector
@@ -11,7 +11,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'WPI_VERSION',     '1.4.45.104' );
+define( 'WPI_VERSION',     '1.4.45.105' );
 define( 'WPI_PLUGIN_DIR',  plugin_dir_path( __FILE__ ) );
 define( 'WPI_PLUGIN_URL',  plugin_dir_url( __FILE__ ) );
 define( 'WPI_PLUGIN_FILE', __FILE__ );
@@ -3160,6 +3160,7 @@ window.wpiRemoveDevice = function(idx, sessionKey, userId) {
     fd.append('session_id', sessionKey);
     fd.append('user_id', userId);
     fd.append('device_info', JSON.stringify(wpiDeviceInfo()));
+    fd.append('nonce', WPI_LOGIN_NONCE);
     fetch(AJAX_URL, {method:'POST', credentials:'include', body:fd})
         .then(function(r){ return r.json(); })
         .then(function(d) {
