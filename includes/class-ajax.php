@@ -9942,3 +9942,21 @@ If you received this, your schedule email settings are working correctly.", $cfg
     }
 
 }
+ hash_equals( $stored_code, $code ) ) {
+            set_transient( $attempt_key, $attempts + 1, HOUR_IN_SECONDS );
+            $left = max( 0, 10 - $attempts - 1 );
+            wp_send_json_error( array(
+                'message' => 'Incorrect code.' . ( $left > 0
+                    ? ' ' . $left . ' attempt' . ( 1 === $left ? '' : 's' ) . ' remaining.'
+                    : ' Please request a new code.' ),
+            ) );
+            return;
+        }
+        delete_transient( $trans_key );
+        delete_transient( $attempt_key );
+        $verified_key = 'wpi_email_verified_' . md5( strtolower( $email ) );
+        set_transient( $verified_key, '1', 15 * MINUTE_IN_SECONDS );
+        wp_send_json_success( array( 'verified' => true ) );
+    }
+
+}
