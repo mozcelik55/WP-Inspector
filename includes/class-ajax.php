@@ -6764,13 +6764,13 @@ If you received this, your schedule email settings are working correctly.", $cfg
             // HKDF for Web Push key derivation (RFC 8291)
             $salt = random_bytes(16);
 
-            // ikm = HKDF-Extract(auth, ECDH result || "WebPush: info " || receiver_pub || eph_pub)
-            $info_key = "WebPush: info " . $receiver_pub . $eph_pub_raw;
+            // ikm = HKDF-Extract(auth, ECDH result || "WebPush: info " || receiver_pub || eph_pub)
+            $info_key = "WebPush: info " . $receiver_pub . $eph_pub_raw;
             $ikm = self::hkdf( $auth, $shared_secret, $info_key, 32 );
 
             // Derive content encryption key (16 bytes) and nonce (12 bytes)
-            $cek   = self::hkdf( $salt, $ikm, "Content-Encoding: aes128gcm ", 16 );
-            $nonce = self::hkdf( $salt, $ikm, "Content-Encoding: nonce ", 12 );
+            $cek   = self::hkdf( $salt, $ikm, "Content-Encoding: aes128gcm ", 16 );
+            $nonce = self::hkdf( $salt, $ikm, "Content-Encoding: nonce ", 12 );
 
             // Encrypt: AES-128-GCM
             $padded     = $plaintext . ""; // record delimiter
