@@ -4356,6 +4356,3 @@ function wpi_ensure_org_licence_columns() {
     if ( ! in_array( 'trial_days',    $cols ) ) $wpdb->query( "ALTER TABLE {$table} ADD COLUMN trial_days INT(11) NOT NULL DEFAULT 14" );
     $wpdb->suppress_errors( false );
 }
->query( "ALTER TABLE {$table} ADD COLUMN trial_days INT(11) NOT NULL DEFAULT 14" );
-    $wpdb->suppress_errors( false );
-}
