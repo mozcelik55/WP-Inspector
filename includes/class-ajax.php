@@ -5490,6 +5490,10 @@ Valid types: yes_no, text, textarea, number, multiple_choice, checkbox, date_tim
             $removed_orgs = array_values( array_filter( $removed_orgs, function($oid) use($org_id){ return (int)$oid !== (int)$org_id; } ) );
             update_user_meta( $user_id, 'wpi_removed_orgs', $removed_orgs );
         }
+        // Re-evaluate subscription access for the added user immediately — their
+        // wpi_access_basic flag must reflect the org's current licence, not a stale state.
+        require_once WPI_PLUGIN_DIR . 'includes/class-access.php';
+        WPI_Access::check_login_access( get_userdata( $user_id ) );
         $this->json( array('success'=>true) );
     }
 
@@ -5578,6 +5582,12 @@ Valid types: yes_no, text, textarea, number, multiple_choice, checkbox, date_tim
         global $wpdb;
         if ( $org_id ) $wpdb->replace( $wpdb->prefix.'wpi_org_users', array('org_id'=>$org_id,'user_id'=>$uid,'role'=>$role) );
         $wpdb->replace( $wpdb->prefix.'wpi_user_roles', array('user_id'=>$uid,'role'=>'standard','set_by'=>get_current_user_id()) );
+
+        // Set correct subscription access state immediately — without this the new
+        // user would have no wpi_access_basic meta and be treated as fully paid
+        // before they ever log in.
+        require_once WPI_PLUGIN_DIR . 'includes/class-access.php';
+        WPI_Access::check_login_access( get_userdata( $uid ) );
 
         // Send branded welcome email with set-password link
         $first_name  = sanitize_text_field($body['first_name'] ?? '');

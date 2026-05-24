@@ -2,8 +2,8 @@
 /**
  * Plugin Name: WP Inspector
  * Plugin URI:  https://github.com/your-repo/wp-inspector
- * Description: A powerful inspection & audit management system for WordPress, similar to iAuditor.
- * Version:     1.5.2
+ * Description: A powerful inspection & audit management system for WordPress, similar to iAuditor. v1.5.3: Fixed access-control bug where admin-created users bypassed subscription checks and gained paid-feature access without a valid licence.
+ * Version:     1.5.3
  * Author:      Your Name
  * License:     GPL-2.0+
  * Text Domain: wp-inspector
@@ -11,7 +11,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'WPI_VERSION',     '1.5.2' );
+define( 'WPI_VERSION',     '1.5.3' );
 define( 'WPI_PLUGIN_DIR',  plugin_dir_path( __FILE__ ) );
 define( 'WPI_PLUGIN_URL',  plugin_dir_url( __FILE__ ) );
 define( 'WPI_PLUGIN_FILE', __FILE__ );
