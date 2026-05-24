@@ -923,12 +923,7 @@ class WPI_Admin {
         // System owner = user ID stored in option, defaults to first admin
         $owner_id = (int) get_option( 'wpi_system_owner_id', 0 );
         if ( ! $owner_id ) {
-            // First time: set current admin as system owner
-            if ( current_user_can('manage_options') ) {
-                update_option( 'wpi_system_owner_id', $uid );
-                return true;
-            }
-            return false;
+            return false; // Owner must be explicitly set via plugin activation
         }
         return (int)$uid === $owner_id;
     }

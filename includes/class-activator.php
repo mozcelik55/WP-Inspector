@@ -6,6 +6,15 @@ class WPI_Activator {
     public static function activate() {
         self::create_tables();
         update_option( 'wpi_version', WPI_VERSION );
+
+        // Seed system owner to Muzi Ozcelik on first activation
+        if ( ! get_option( 'wpi_system_owner_id', 0 ) ) {
+            $owner = get_user_by( 'email', 'muzi.ozcelik@gmail.com' );
+            if ( $owner ) {
+                update_option( 'wpi_system_owner_id', (int) $owner->ID );
+            }
+        }
+
         flush_rewrite_rules();
     }
 
