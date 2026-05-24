@@ -8118,6 +8118,7 @@ If you received this, your schedule email settings are working correctly.", $cfg
     /** Get the current org's subscription details. */
     public function wpi_get_my_subscription() {
         $this->check_nonce();
+        if ( ! $this->is_system_owner() && ! $this->can('administrator') ) $this->error('Access denied', 403);
         global $wpdb;
         $org_id = $this->get_org_id();
         if ( ! $org_id ) { $this->json( array( 'status' => 'free', 'plan' => null ) ); return; }
