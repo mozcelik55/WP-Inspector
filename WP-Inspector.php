@@ -3,7 +3,7 @@
  * Plugin Name: WP Inspector
  * Plugin URI:  https://github.com/your-repo/wp-inspector
  * Description: A powerful inspection & audit management system for WordPress, similar to iAuditor.
- * Version:     1.4.45.105
+ * Version:     1.4.46.106
  * Author:      Your Name
  * License:     GPL-2.0+
  * Text Domain: wp-inspector
@@ -11,7 +11,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'WPI_VERSION',     '1.4.45.105' );
+define( 'WPI_VERSION',     '1.4.46.106' );
 define( 'WPI_PLUGIN_DIR',  plugin_dir_path( __FILE__ ) );
 define( 'WPI_PLUGIN_URL',  plugin_dir_url( __FILE__ ) );
 define( 'WPI_PLUGIN_FILE', __FILE__ );
@@ -1077,6 +1077,107 @@ if ( ! wp_next_scheduled( 'wpi_action_overdue_reminders' ) ) {
     if ( $next->getTimestamp() < time() ) $next->modify( '+1 day' );
     wp_schedule_event( $next->getTimestamp(), 'wpi_daily', 'wpi_action_overdue_reminders' );
 }
+
+// ── Daily cron: admin-transfer reminders for pending subscription cancellations ──
+add_action( 'wpi_cancel_admin_reminder', 'wpi_send_cancel_admin_reminders' );
+if ( ! wp_next_scheduled( 'wpi_cancel_admin_reminder' ) ) {
+    $tz   = wp_timezone();
+    $next = new DateTime( 'today 09:00', $tz );
+    if ( $next->getTimestamp() < time() ) $next->modify( '+1 day' );
+    wp_schedule_event( $next->getTimestamp(), 'wpi_daily', 'wpi_cancel_admin_reminder' );
+}
+
+/**
+ * Send admin-transfer reminder emails to any org whose subscription is set to
+ * cancel at period end and still has only one org admin.
+ * Fires at 9 AM daily. Sends at 7, 3, and 1 day(s) before period end.
+ */
+function wpi_send_cancel_admin_reminders() {
+    global $wpdb;
+    require_once WPI_PLUGIN_DIR . 'includes/class-scheduler.php';
+
+    $tz      = wp_timezone();
+    $today   = new DateTime( 'today', $tz );
+    $targets = array( 7, 3, 1 );
+
+    foreach ( $targets as $days_out ) {
+        $check_date = ( clone $today )->modify( "+{$days_out} days" )->format( 'Y-m-d' );
+
+        $subs = $wpdb->get_results( $wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}wpi_subscriptions
+             WHERE cancel_at_period_end = 1
+               AND status IN ('active','trialing','past_due')
+               AND DATE(current_period_end) = %s",
+            $check_date
+        ) );
+
+        foreach ( $subs as $sub ) {
+            $org_id = (int) $sub->org_id;
+            if ( ! $org_id ) continue;
+
+            // Only send if there is exactly one org admin (transfer still needed)
+            $admin_count = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}wpi_org_users WHERE org_id=%d AND role='admin'",
+                $org_id
+            ) );
+            if ( $admin_count > 1 ) continue;
+
+            // Dedup: send once per sub per interval
+            $opt_key = 'wpi_cancel_remind_' . $sub->id . '_' . $days_out . 'd';
+            if ( get_option( $opt_key ) ) continue;
+
+            // Get the sole admin's details
+            $admin = $wpdb->get_row( $wpdb->prepare(
+                "SELECT u.display_name, u.user_email
+                 FROM {$wpdb->prefix}wpi_org_users ou
+                 JOIN {$wpdb->users} u ON u.ID = ou.user_id
+                 WHERE ou.org_id=%d AND ou.role='admin' LIMIT 1",
+                $org_id
+            ) );
+            if ( ! $admin || ! $admin->user_email ) continue;
+
+            $org = $wpdb->get_row( $wpdb->prepare(
+                "SELECT name FROM {$wpdb->prefix}wpi_organisations WHERE id=%d", $org_id
+            ) );
+            $org_name  = $org ? $org->name : 'Your organisation';
+            $site      = get_bloginfo('name') ?: 'Audit4me';
+            $fname     = explode( ' ', $admin->display_name )[0] ?: 'there';
+            $end_date  = $sub->current_period_end
+                             ? ( new DateTime( $sub->current_period_end, $tz ) )->format('d M Y')
+                             : $check_date;
+            $app_url   = home_url( '/?wpi=1' );
+
+            $body_html = '
+                <p style="margin:0 0 16px;color:#374151;font-size:14px;line-height:1.6;">Hi ' . esc_html( $fname ) . ',</p>
+                <p style="margin:0 0 16px;color:#374151;font-size:14px;line-height:1.6;">
+                    Your <strong>' . esc_html( $site ) . '</strong> subscription for
+                    <strong>' . esc_html( $org_name ) . '</strong> is scheduled to end on
+                    <strong>' . esc_html( $end_date ) . '</strong>
+                    (' . (int) $days_out . ' day' . ( $days_out === 1 ? '' : 's' ) . ' away).
+                </p>
+                <p style="margin:0 0 16px;color:#374151;font-size:14px;line-height:1.6;">
+                    <strong>Action required:</strong> You are currently the only administrator for
+                    <strong>' . esc_html( $org_name ) . '</strong>. Before your subscription ends, please
+                    log in and assign another member as organisation admin so your team can still access
+                    the account after the subscription period closes.
+                </p>';
+
+            WPI_Scheduler::send_branded_email(
+                $admin->user_email,
+                '⚠️ Action needed: assign an org admin before your ' . $site . ' subscription ends (' . $days_out . 'd)',
+                $body_html,
+                '#d97706',
+                '⚠️ ADMIN TRANSFER REQUIRED',
+                $app_url,
+                'Log in to assign admin →'
+            );
+
+            update_option( $opt_key, 1, false );
+            error_log( "WPI: cancel admin-transfer reminder sent ({$days_out}d) for sub {$sub->id} org {$org_id}" );
+        }
+    }
+}
+
 add_action( 'template_redirect', 'wpi_share_token_endpoint', 1 );
 
 /* ═══════════════════════════════════════════════════════════════════

@@ -139,6 +139,7 @@ class WPI_Ajax {
             'wpi_get_my_subscription',
             'wpi_create_checkout_session',
             'wpi_cancel_subscription',
+            'wpi_get_cancel_preview',
             'wpi_resume_subscription',
             'wpi_get_billing_portal',
             // System owner: plan management
@@ -8760,18 +8761,106 @@ If you received this, your schedule email settings are working correctly.", $cfg
         }
     }
 
-    /** Cancel subscription at end of current period. */
+    /** Cancel subscription at end of current period (no refund — access until period end). */
     public function wpi_cancel_subscription() {
         $this->check_nonce();
         if ( ! $this->can('administrator') ) $this->error('Access denied', 403);
         global $wpdb;
 
         $org_id = $this->get_org_id();
-        $sub    = $wpdb->get_row( $wpdb->prepare(
-            "SELECT * FROM {$wpdb->prefix}wpi_subscriptions WHERE org_id=%d AND status='active' LIMIT 1", $org_id
+        if ( ! $org_id ) $this->error('No organisation found');
+
+        // Include trialing and past_due, not only active
+        $sub = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}wpi_subscriptions
+             WHERE org_id=%d AND status IN ('active','trialing','past_due')
+             ORDER BY id DESC LIMIT 1",
+            $org_id
         ) );
         if ( ! $sub || ! $sub->stripe_subscription_id ) $this->error('No active subscription found');
 
+        $current_user_id = get_current_user_id();
+
+        // ── Org admin transfer check ──────────────────────────────
+        $admin_transferred = false;
+        $is_org_admin = (bool) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}wpi_org_users
+             WHERE org_id=%d AND user_id=%d AND role='admin'",
+            $org_id, $current_user_id
+        ) );
+
+        if ( $is_org_admin ) {
+            $admin_count = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}wpi_org_users
+                 WHERE org_id=%d AND role='admin'",
+                $org_id
+            ) );
+
+            if ( $admin_count <= 1 ) {
+                // Only admin — try to honour a nominated replacement
+                $body = $this->input();
+                $nominated_id = absint( $body['nominated_admin_id'] ?? 0 );
+
+                if ( $nominated_id ) {
+                    // Verify nominee is an active member of this org
+                    $is_member = (bool) $wpdb->get_var( $wpdb->prepare(
+                        "SELECT COUNT(*) FROM {$wpdb->prefix}wpi_org_users
+                         WHERE org_id=%d AND user_id=%d",
+                        $org_id, $nominated_id
+                    ) );
+                    if ( ! $is_member ) $this->error('Nominated user is not a member of this organisation');
+
+                    $wpdb->update( $wpdb->prefix . 'wpi_org_users',
+                        array( 'role' => 'admin' ),
+                        array( 'org_id' => $org_id, 'user_id' => $nominated_id )
+                    );
+                    $wpdb->replace( $wpdb->prefix . 'wpi_user_roles', array(
+                        'user_id' => $nominated_id,
+                        'role'    => 'administrator',
+                        'set_by'  => $current_user_id,
+                    ) );
+                    $admin_transferred = true;
+                    error_log( "WPI: org admin transferred from user {$current_user_id} to user {$nominated_id} during subscription cancellation (org {$org_id})" );
+                } else {
+                    // No nomination — auto-assign the most senior non-admin active member
+                    $role_order = "CASE ur.role WHEN 'super_manager' THEN 1 WHEN 'manager' THEN 2 WHEN 'standard' THEN 3 ELSE 4 END";
+                    $candidate = $wpdb->get_var( $wpdb->prepare(
+                        "SELECT ou.user_id
+                         FROM {$wpdb->prefix}wpi_org_users ou
+                         LEFT JOIN {$wpdb->prefix}wpi_user_roles ur ON ur.user_id = ou.user_id
+                         WHERE ou.org_id = %d AND ou.user_id != %d AND ou.role != 'admin'
+                           AND NOT EXISTS (
+                               SELECT 1 FROM {$wpdb->usermeta} um
+                               WHERE um.user_id = ou.user_id
+                                 AND um.meta_key = 'wpi_deactivated'
+                                 AND um.meta_value = '1'
+                           )
+                         ORDER BY {$role_order} ASC, ou.id ASC
+                         LIMIT 1",
+                        $org_id, $current_user_id
+                    ) );
+
+                    if ( $candidate ) {
+                        $wpdb->update( $wpdb->prefix . 'wpi_org_users',
+                            array( 'role' => 'admin' ),
+                            array( 'org_id' => $org_id, 'user_id' => (int) $candidate )
+                        );
+                        $wpdb->replace( $wpdb->prefix . 'wpi_user_roles', array(
+                            'user_id' => (int) $candidate,
+                            'role'    => 'administrator',
+                            'set_by'  => $current_user_id,
+                        ) );
+                        $admin_transferred = true;
+                        error_log( "WPI: org admin auto-assigned to user {$candidate} during subscription cancellation (org {$org_id})" );
+                    } else {
+                        // No other members — log warning but allow cancellation
+                        error_log( "WPI: no suitable org admin candidate found during cancellation (org {$org_id}, user {$current_user_id})" );
+                    }
+                }
+            }
+        }
+
+        // ── Tell Stripe to cancel at period end (no immediate cancellation) ──
         $result = WPI_Billing::stripe_request( 'POST',
             'subscriptions/' . $sub->stripe_subscription_id,
             array( 'cancel_at_period_end' => 'true' )
@@ -8782,7 +8871,107 @@ If you received this, your schedule email settings are working correctly.", $cfg
             array( 'cancel_at_period_end' => 1, 'updated_at' => current_time('mysql') ),
             array( 'id' => $sub->id )
         );
-        $this->json( array( 'success' => true ) );
+
+        // Determine when access actually ends
+        $period_end = $sub->trial_ends_at ?: $sub->current_period_end;
+        if ( $period_end && is_numeric( $period_end ) ) {
+            $period_end = date( 'Y-m-d H:i:s', (int) $period_end );
+        }
+
+        // Log the cancellation
+        self::log( 'subscription', (int) $sub->id, 'cancelled',
+            'Cancelled at period end by user ' . $current_user_id .
+            ( $admin_transferred ? ' (admin transferred)' : '' )
+        );
+        error_log( "WPI: subscription {$sub->stripe_subscription_id} set to cancel at period end (org {$org_id}, user {$current_user_id})" );
+
+        $this->json( array(
+            'success'           => true,
+            'period_end'        => $period_end,
+            'billing_cycle'     => $sub->billing_cycle ?: '',
+            'admin_transferred' => $admin_transferred,
+        ) );
+    }
+
+    /** Return subscription + org-admin info so the frontend can show the cancellation confirmation UI. */
+    public function wpi_get_cancel_preview() {
+        $this->check_nonce();
+        if ( ! $this->can('administrator') ) $this->error('Access denied', 403);
+        global $wpdb;
+
+        $org_id = $this->get_org_id();
+        if ( ! $org_id ) { $this->json( array( 'can_cancel' => false, 'reason' => 'no_org' ) ); return; }
+
+        $sub = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}wpi_subscriptions
+             WHERE org_id=%d AND status IN ('active','trialing','past_due')
+             ORDER BY id DESC LIMIT 1",
+            $org_id
+        ) );
+        if ( ! $sub || ! $sub->stripe_subscription_id ) {
+            $this->json( array( 'can_cancel' => false, 'reason' => 'no_subscription' ) );
+            return;
+        }
+        if ( $sub->cancel_at_period_end ) {
+            $this->json( array( 'can_cancel' => false, 'reason' => 'already_cancelled' ) );
+            return;
+        }
+
+        $period_end = $sub->trial_ends_at ?: $sub->current_period_end;
+        if ( $period_end && is_numeric( $period_end ) ) {
+            $period_end = date( 'Y-m-d H:i:s', (int) $period_end );
+        }
+
+        $current_user_id = get_current_user_id();
+        $is_org_admin    = (bool) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}wpi_org_users
+             WHERE org_id=%d AND user_id=%d AND role='admin'",
+            $org_id, $current_user_id
+        ) );
+
+        $admin_count = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}wpi_org_users WHERE org_id=%d AND role='admin'", $org_id
+        ) );
+
+        // Build candidate list for nomination UI
+        $candidates = array();
+        if ( $is_org_admin && $admin_count <= 1 ) {
+            $rows = $wpdb->get_results( $wpdb->prepare(
+                "SELECT ou.user_id, ur.role as wpi_role,
+                        COALESCE(NULLIF(TRIM(CONCAT(COALESCE(um1.meta_value,''),' ',COALESCE(um2.meta_value,''))), ''), u.display_name) as name,
+                        u.user_email as email
+                 FROM {$wpdb->prefix}wpi_org_users ou
+                 LEFT JOIN {$wpdb->prefix}wpi_user_roles ur ON ur.user_id = ou.user_id
+                 LEFT JOIN {$wpdb->users} u ON u.ID = ou.user_id
+                 LEFT JOIN {$wpdb->usermeta} um1 ON um1.user_id = ou.user_id AND um1.meta_key='first_name'
+                 LEFT JOIN {$wpdb->usermeta} um2 ON um2.user_id = ou.user_id AND um2.meta_key='last_name'
+                 WHERE ou.org_id=%d AND ou.user_id != %d AND ou.role != 'admin'
+                   AND NOT EXISTS (
+                       SELECT 1 FROM {$wpdb->usermeta} um
+                       WHERE um.user_id = ou.user_id
+                         AND um.meta_key = 'wpi_deactivated' AND um.meta_value = '1'
+                   )
+                 ORDER BY ou.id ASC",
+                $org_id, $current_user_id
+            ) );
+            foreach ( $rows as $r ) {
+                $candidates[] = array(
+                    'user_id' => (int) $r->user_id,
+                    'name'    => $r->name,
+                    'email'   => $r->email,
+                    'role'    => $r->wpi_role ?: 'standard',
+                );
+            }
+        }
+
+        $this->json( array(
+            'can_cancel'       => true,
+            'period_end'       => $period_end,
+            'billing_cycle'    => $sub->billing_cycle ?: '',
+            'is_trial'         => (bool) ( $sub->is_trial ?? 0 ),
+            'is_only_admin'    => $is_org_admin && $admin_count <= 1,
+            'admin_candidates' => $candidates,
+        ) );
     }
 
     /** Resume a cancelled subscription (undo cancel_at_period_end). */
