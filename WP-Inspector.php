@@ -2,7 +2,11 @@
 /**
  * Plugin Name: WP Inspector
  * Plugin URI:  https://github.com/your-repo/wp-inspector
+<<<<<<< HEAD
  * Description: A powerful inspection & audit management system for WordPress, similar to iAuditor. v1.5.5: Fixed fatal parse error (unmatched parenthesis) in class-ajax.php caused by orphaned duplicate code block outside class definition.
+=======
+ * Description: A powerful inspection & audit management system for WordPress, similar to iAuditor. v1.5.5: Fixed PHP fatal error caused by corrupt duplicate code at end of class-ajax.php.
+>>>>>>> b0d80df0ece9de145969cb7d362226475662cedd
  * Version:     1.5.5
  * Author:      Your Name
  * License:     GPL-2.0+
